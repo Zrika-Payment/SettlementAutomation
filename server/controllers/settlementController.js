@@ -3,6 +3,9 @@ const csv = require('csv-parser');
 const { v4: uuidv4 } = require('uuid');
 const Settlement = require('../models/Settlement');
 const mapping = require('../config/fieldMapping');
+const { Parser } = require('json2csv');
+const path = require('path');
+
 
 // 1. Helper to clean currency strings safely
 const parseCurrency = (value) => {
@@ -137,10 +140,25 @@ exports.generateSettlementFromRaw = async (req, res) => {
                 const merchantNames = settlementBatches.map(b => b.merchantName);
                 await Settlement.deleteMany({
                     merchantName: { $in: merchantNames },
-                    payoutStatus: 'Not Yet Settled'
+                    payoutStatus: 'Not Yet Settled'                       
                 });
                 await Settlement.insertMany(settlementBatches);
             }
+
+            // 2. NEW: GENERATE PHYSICAL CSV FILE FOR DOWNLOAD
+            const exportDir = path.join(__dirname, '../exports');
+            console.log(exportDir);
+            if (!fs.existsSync(exportDir)) fs.mkdirSync(exportDir);
+
+            const fileName = `Settlement_Summary_${Date.now()}.csv`;
+            const exportPath = path.join(exportDir, fileName);
+
+            const json2csvParser = new Parser();
+            const csvData = json2csvParser.parse(settlementBatches);
+            fs.writeFileSync(exportPath, csvData);
+
+            // Cleanup raw upload
+            if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
 
             if (fs.existsSync(filePath)) fs.unlinkSync(filePath); // Cleanup
 
@@ -149,7 +167,8 @@ exports.generateSettlementFromRaw = async (req, res) => {
             res.json({
                 message: 'Settlement batches generated successfully',
                 batchesCreated: settlementBatches.length,
-                totalTransactions: rowCount
+                totalTransactions: rowCount,
+                batchId: fileName
             });
 
         } catch (error) {
@@ -172,5 +191,21 @@ exports.getSettlements = async (req, res) => {
         res.json(settlements);
     } catch (err) {
         res.status(500).json({ error: err.message });
+    }
+};
+
+// 4. NEW: ADD DOWNLOAD ROUTE HANDLER
+exports.downloadSettlement = async (req, res) => {
+    try {
+        const fileName = req.query.batchId;
+        const filePath = path.join(__dirname, '../exports', fileName);
+
+        if (fs.existsSync(filePath)) {
+            res.download(filePath, fileName);
+        } else {
+            res.status(404).json({ error: "File not found or expired." });
+        }
+    } catch (error) {
+        res.status(500).json({ error: "Download failed" });
     }
 };
