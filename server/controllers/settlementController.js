@@ -16,6 +16,15 @@ const parseCurrency = (value) => {
     return isNaN(parsed) ? 0 : parsed;
 };
 
+// NEW: Helper to format number to Indian Rupee with Commas
+const formatToRupee = (amount) => {
+    return new Intl.NumberFormat('en-IN', {
+        style: 'currency',
+        currency: 'INR',
+        minimumFractionDigits: 2
+    }).format(amount);
+};
+
 // 2. Custom Date Parser for "15-01-2026 20:57"
 const parseCSVDate = (dateStr) => {
     if (!dateStr) return null;
@@ -90,6 +99,7 @@ exports.generateSettlementFromRaw = async (req, res) => {
 
         // 4. Date Tracking (Memory efficient: only store min/max)
         const rowDate = parseCSVDate(row[mapping.rawHeaders.date]);
+
         if (rowDate) {
             if (!groupedData[key].minDate || rowDate < groupedData[key].minDate) groupedData[key].minDate = rowDate;
             if (!groupedData[key].maxDate || rowDate > groupedData[key].maxDate) groupedData[key].maxDate = rowDate;
@@ -98,6 +108,8 @@ exports.generateSettlementFromRaw = async (req, res) => {
         // Log progress for very large files
         if (rowCount % 5000 === 0) console.log(`⏳ Processed ${rowCount} rows...`);
     });
+
+
 
     stream.on('end', async () => {
         try {
@@ -140,10 +152,19 @@ exports.generateSettlementFromRaw = async (req, res) => {
                 const merchantNames = settlementBatches.map(b => b.merchantName);
                 await Settlement.deleteMany({
                     merchantName: { $in: merchantNames },
-                    payoutStatus: 'Not Yet Settled'                       
+                    payoutStatus: 'Not Yet Settled'
                 });
                 await Settlement.insertMany(settlementBatches);
             }
+
+            // Create formatted data ONLY for the CSV file
+            const formattedForCSV = settlementBatches.map(batch => ({
+                ...batch,
+                settlementAmount: formatToRupee(batch.settlementAmount),
+                totalAmount: formatToRupee(batch.totalAmount),
+                deductedAmount: formatToRupee(batch.deductedAmount)
+            }));
+
 
             // 2. NEW: GENERATE PHYSICAL CSV FILE FOR DOWNLOAD
             const exportDir = path.join(__dirname, '../exports');
@@ -154,9 +175,11 @@ exports.generateSettlementFromRaw = async (req, res) => {
             const exportPath = path.join(exportDir, fileName);
 
             const json2csvParser = new Parser();
-            const csvData = json2csvParser.parse(settlementBatches);
+            const csvData = json2csvParser.parse(formattedForCSV);
             fs.writeFileSync(exportPath, csvData);
-
+            // Add UTF-8 BOM (Byte Order Mark) to ensure Excel displays symbols like ₹ correctly
+            const BOM = '\uFEFF';
+            fs.writeFileSync(exportPath, BOM + csvData, 'utf8');
             // Cleanup raw upload
             if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
 
