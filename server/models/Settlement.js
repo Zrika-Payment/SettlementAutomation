@@ -16,6 +16,10 @@ const SettlementSchema = new mongoose.Schema({
   payoutMessage: { type: String, default: '-' },   // New Field for error messages
   isPartial: { type: String, default: 'No' },
 
+  // Processing Details
+  processedAt: { type: Date },
+  paymentReference: { type: String },
+
   // Dates
   dateRange: { type: String }, 
   createdAt: { type: Date },   

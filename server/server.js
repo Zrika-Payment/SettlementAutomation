@@ -104,9 +104,19 @@ app.post('/api/login', async (req, res) => {
 //app.post('/api/upload-recon', upload.single('file'), settlementController.processReconciliationFile);
 // In server.js
 app.post('/api/generate-settlement', upload.single('file'), settlementController.generateSettlementFromRaw);
+
 app.get('/api/settlements', settlementController.getSettlements);
 // --- ROUTE 2: DOWNLOAD FILE ---
 app.get('/api/download-settlement', settlementController.downloadSettlement); // Add this
+
+// --- ROUTE 3: DOWNLOAD 15-DAY DAYWISE EXCEL ---
+app.get('/api/download-daywise-excel', settlementController.downloadDaywiseSettlementExcel);
+
+// --- ROUTE 4: PROCESS SETTLEMENTS BY DATE ---
+app.post('/api/settlements/process-by-date', settlementController.processSettlementsByDate);
+
+// --- ROUTE 5: GET SETTLEMENTS BY DATE ---
+app.get('/api/settlements/by-date', settlementController.getSettlementsByDate);
 
 const PORT = 5000;
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
